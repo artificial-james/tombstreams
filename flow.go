@@ -2,11 +2,12 @@ package tombstreams
 
 // DoStream streams data from the outlet to inlet.
 func DoStream(outlet Outlet, inlet Inlet) {
-	go func() {
+	outlet.Tomb().Go(func() error {
+		defer close(inlet.In())
 		for elem := range outlet.Out() {
 			inlet.In() <- elem
 		}
 
-		close(inlet.In())
-	}()
+		return nil
+	})
 }

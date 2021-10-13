@@ -1,6 +1,9 @@
 package tombstreams
 
 import (
+	"fmt"
+	"sync"
+
 	"gopkg.in/tomb.v2"
 )
 
@@ -36,13 +39,16 @@ func NewMap(t *tomb.Tomb, mapFunc MapFunc, parallelism uint) *Map {
 		parallelism,
 		t,
 	}
-	go _map.doStream()
+	t.Go(_map.doStream)
 	return _map
 }
 
 // Via streams data through the given flow
 func (m *Map) Via(flow Flow) Flow {
-	go m.transmit(flow)
+	m.t.Go(func() error {
+		m.transmit(flow)
+		return nil
+	})
 	return flow
 }
 
@@ -72,89 +78,30 @@ func (m *Map) transmit(inlet Inlet) {
 	}
 }
 
-func (m *Map) doStream() {
+func (m *Map) doStream() error {
 	defer close(m.out)
-	sem := make(chan struct{}, m.parallelism)
-	for {
-		select {
-		case elem := <-m.in:
-			sem <- struct{}{}
-			go func(e interface{}) {
-				defer func() { <-sem }()
-				trans, err := m.MapF(e)
-				if err != nil {
-					m.t.Kill(err)
-				}
-				select {
-				case m.out <- trans:
-				case <-m.t.Dying():
-					return
-				}
-			}(elem)
-		case <-m.t.Dying():
-			return
-		}
-	}
-	for i := 0; i < int(m.parallelism); i++ {
-		sem <- struct{}{}
-	}
-}
 
-// func (m *Map) doStream() {
-// 	defer close(m.out)
-// 	sem := make(chan struct{}, m.parallelism)
-// 	for {
-// 		select {
-// 		case elem := <-m.in:
-// 			sem <- struct{}{}
-//
-// 			wrapperFn := func(e interface{}) func() error {
-// 				return func() error {
-// 					defer func() { <-sem }()
-// 					trans, err := m.MapF(e)
-// 					if err != nil {
-// 						return err
-// 					}
-//
-// 					select {
-// 					case m.out <- trans:
-// 					case <-m.t.Dying():
-// 						fmt.Println("Mapper routine is dying")
-// 						return nil
-// 					}
-// 					return nil
-// 				}
-// 			}
-//
-// 			m.t.Go(wrapperFn(elem))
-// 		case <-m.t.Dying():
-// 			fmt.Println("Mapper is dying")
-// 			return
-// 		}
-// 	}
-// 	// for elem := range m.in {
-// 	// 	sem <- struct{}{}
-// 	//
-// 	// 	wrapperFn := func(e interface{}) func() error {
-// 	// 		return func() error {
-// 	// 			defer func() { <-sem }()
-// 	// 			trans, err := m.MapF(e)
-// 	// 			if err != nil {
-// 	// 				return err
-// 	// 			}
-// 	//
-// 	// 			select {
-// 	// 			case m.out <- trans:
-// 	// 			case <-m.t.Dying():
-// 	// 				return nil
-// 	// 			}
-// 	// 			return nil
-// 	// 		}
-// 	// 	}
-// 	//
-// 	// 	m.t.Go(wrapperFn(elem))
-// 	// }
-// 	for i := 0; i < int(m.parallelism); i++ {
-// 		sem <- struct{}{}
-// 	}
-// }
+	var wg sync.WaitGroup
+	wg.Add(int(m.parallelism))
+	for i := 0; i < int(m.parallelism); i++ {
+		m.t.Go(func() error {
+			defer wg.Done()
+			for {
+				select {
+				case elem := <-m.in:
+					trans, err := m.MapF(elem)
+					if err != nil {
+						return err
+					}
+					m.out <- trans
+				case <-m.t.Dying():
+					fmt.Println("Routine dying...")
+					return nil
+				}
+			}
+		})
+	}
+
+	wg.Wait()
+	return nil
+}

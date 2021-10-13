@@ -6,12 +6,12 @@ import (
 
 // ChanSource streams data from the input channel
 type ChanSource struct {
-	in chan interface{}
+	in <-chan interface{}
 	t  *tomb.Tomb
 }
 
 // NewChanSource returns a new ChanSource instance
-func NewChanSource(t *tomb.Tomb, in chan interface{}) *ChanSource {
+func NewChanSource(t *tomb.Tomb, in <-chan interface{}) *ChanSource {
 	return &ChanSource{in, t}
 }
 
