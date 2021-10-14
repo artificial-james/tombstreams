@@ -12,6 +12,7 @@ import (
 
 func Map(in interface{}) (interface{}, error) {
 	time.Sleep(500 * time.Millisecond)
+	// Any errors cause the pipeline to cancel
 	return in, nil
 }
 
@@ -24,6 +25,7 @@ func generateCounter(ctx context.Context, count int) <-chan interface{} {
 			select {
 			case out <- i:
 			case <-ctx.Done():
+				// Supports tombs and a child context
 				fmt.Println("Stopping...")
 				return
 			}
@@ -34,22 +36,15 @@ func generateCounter(ctx context.Context, count int) <-chan interface{} {
 }
 
 func main() {
-	ctx, _ := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 20*time.Second)
 	t, pctx := tomb.WithContext(ctx)
-	// source := tombstreams.NewChanSource(t, generateTicker(ctx))
 	source := tombstreams.NewChanSource(t, generateCounter(pctx, 20))
-	mapper := tombstreams.NewMap(t, Map, 1)
+	mapper := tombstreams.NewMap(t, Map, 2)
+	sink := tombstreams.NewStdoutSink(t)
 
-	out := make(chan interface{})
-	sink := tombstreams.NewChanSink(out)
+	// If using NewChanSink, the pipeline will need to be wrapped in tomb.Go
+	source.Via(mapper).To(sink)
 
-	go func() {
-		source.Via(mapper).To(sink)
-	}()
-
-	for e := range sink.Out {
-		fmt.Println(e)
-	}
 	<-t.Dead()
 	fmt.Println("Done")
 
@@ -57,6 +52,8 @@ func main() {
 	if err != nil {
 		fmt.Printf("(Tomb) Exited with error:  %v\n", err)
 	}
+	// The parent context is not affected by the state of the pipeline.
+	// However, tomb will cancel the child context when the pipeline exits.
 	err = ctx.Err()
 	if err != nil {
 		fmt.Printf("(Ctx) Exited with error:  %v\n", err)
