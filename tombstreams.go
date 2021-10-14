@@ -13,15 +13,18 @@ type Inlet interface {
 type Outlet interface {
 	Out() <-chan interface{}
 	Tomb() *tomb.Tomb
+	// Dead() <-chan struct{}
+	// Err() (reason error)
+	// Wait() error
 }
 
-// A Source is a set of stream processing steps that has one open output.
+// Source is a set of stream processing steps that has one open output.
 type Source interface {
 	Outlet
 	Via(Flow) Flow
 }
 
-// A Flow is a set of stream processing steps that has one open input and one open output.
+// Flow is a set of stream processing steps that has one open input and one open output.
 type Flow interface {
 	Inlet
 	Outlet
@@ -29,7 +32,7 @@ type Flow interface {
 	To(Sink)
 }
 
-// A Sink is a set of stream processing steps that has one open input.
+// Sink is a set of stream processing steps that has one open input.
 // Can be used as a Subscriber.
 type Sink interface {
 	Inlet

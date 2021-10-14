@@ -1,7 +1,6 @@
 package tombstreams
 
 import (
-	"fmt"
 	"sync"
 
 	"gopkg.in/tomb.v2"
@@ -86,19 +85,19 @@ func (m *Map) doStream() error {
 	for i := 0; i < int(m.parallelism); i++ {
 		m.t.Go(func() error {
 			defer wg.Done()
-			for {
+			for elem := range m.in {
+				trans, err := m.MapF(elem)
+				if err != nil {
+					return err
+				}
+				m.out <- trans
 				select {
-				case elem := <-m.in:
-					trans, err := m.MapF(elem)
-					if err != nil {
-						return err
-					}
-					m.out <- trans
+				case m.out <- trans:
 				case <-m.t.Dying():
-					fmt.Println("Routine dying...")
 					return nil
 				}
 			}
+			return nil
 		})
 	}
 

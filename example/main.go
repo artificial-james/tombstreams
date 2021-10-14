@@ -5,17 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/artificial-james/tombstreams"
 	"gopkg.in/tomb.v2"
+
+	"github.com/artificial-james/tombstreams"
 )
 
-var counter = 0
-
 func Map(in interface{}) (interface{}, error) {
-	if counter == 12 {
-		return nil, fmt.Errorf("Cannot map thing")
-	}
-	counter++
+	fmt.Println(in)
+	time.Sleep(500 * time.Millisecond)
 	return in, nil
 }
 
@@ -58,11 +55,11 @@ func generateCounter(ctx context.Context, count int) <-chan interface{} {
 }
 
 func main() {
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 20*time.Second)
 	t, ctx := tomb.WithContext(ctx)
 	// source := tombstreams.NewChanSource(t, generateTicker(ctx))
 	source := tombstreams.NewChanSource(t, generateCounter(ctx, 100))
-	mapper := tombstreams.NewMap(t, Map, 1)
+	mapper := tombstreams.NewMap(t, Map, 20)
 
 	out := make(chan interface{})
 	sink := tombstreams.NewChanSink(out)
@@ -79,10 +76,10 @@ func main() {
 
 	err := source.Tomb().Err()
 	if err != nil {
-		fmt.Printf("Exited with error:  %v\n", err)
+		fmt.Printf("(Tomb) Exited with error:  %v\n", err)
 	}
 	err = ctx.Err()
 	if err != nil {
-		fmt.Printf("Exited with error:  %v\n", err)
+		fmt.Printf("(Ctx) Exited with error:  %v\n", err)
 	}
 }
