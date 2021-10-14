@@ -11,29 +11,8 @@ import (
 )
 
 func Map(in interface{}) (interface{}, error) {
-	fmt.Println(in)
 	time.Sleep(500 * time.Millisecond)
 	return in, nil
-}
-
-func generateTicks(ctx context.Context) chan interface{} {
-	ticker := time.NewTicker(1 * time.Second)
-	out := make(chan interface{})
-
-	go func() {
-		for {
-			select {
-			case tick := <-ticker.C:
-				out <- tick
-			case <-ctx.Done():
-				fmt.Println("Stopping...")
-				ticker.Stop()
-				return
-			}
-		}
-	}()
-
-	return out
 }
 
 func generateCounter(ctx context.Context, count int) <-chan interface{} {
@@ -55,11 +34,11 @@ func generateCounter(ctx context.Context, count int) <-chan interface{} {
 }
 
 func main() {
-	ctx, _ := context.WithTimeout(context.Background(), 20*time.Second)
-	t, ctx := tomb.WithContext(ctx)
+	ctx, _ := context.WithTimeout(context.Background(), 2*time.Second)
+	t, pctx := tomb.WithContext(ctx)
 	// source := tombstreams.NewChanSource(t, generateTicker(ctx))
-	source := tombstreams.NewChanSource(t, generateCounter(ctx, 100))
-	mapper := tombstreams.NewMap(t, Map, 20)
+	source := tombstreams.NewChanSource(t, generateCounter(pctx, 20))
+	mapper := tombstreams.NewMap(t, Map, 1)
 
 	out := make(chan interface{})
 	sink := tombstreams.NewChanSink(out)

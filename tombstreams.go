@@ -13,9 +13,6 @@ type Inlet interface {
 type Outlet interface {
 	Out() <-chan interface{}
 	Tomb() *tomb.Tomb
-	// Dead() <-chan struct{}
-	// Err() (reason error)
-	// Wait() error
 }
 
 // Source is a set of stream processing steps that has one open output.

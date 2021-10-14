@@ -38,16 +38,20 @@ func NewMap(t *tomb.Tomb, mapFunc MapFunc, parallelism uint) *Map {
 		parallelism,
 		t,
 	}
-	t.Go(_map.doStream)
+	if t.Alive() {
+		t.Go(_map.doStream)
+	}
 	return _map
 }
 
 // Via streams data through the given flow
 func (m *Map) Via(flow Flow) Flow {
-	m.t.Go(func() error {
-		m.transmit(flow)
-		return nil
-	})
+	if m.t.Alive() {
+		m.t.Go(func() error {
+			m.transmit(flow)
+			return nil
+		})
+	}
 	return flow
 }
 
@@ -72,8 +76,23 @@ func (m *Map) Tomb() *tomb.Tomb {
 
 func (m *Map) transmit(inlet Inlet) {
 	defer close(inlet.In())
-	for elem := range m.Out() {
-		inlet.In() <- elem
+	for {
+		var e interface{}
+		select {
+		case elem, ok := <-m.Out():
+			if ok {
+				e = elem
+			} else {
+				return
+			}
+		case <-m.t.Dying():
+			return
+		}
+		select {
+		case inlet.In() <- e:
+		case <-m.t.Dying():
+			return
+		}
 	}
 }
 
@@ -83,14 +102,27 @@ func (m *Map) doStream() error {
 	var wg sync.WaitGroup
 	wg.Add(int(m.parallelism))
 	for i := 0; i < int(m.parallelism); i++ {
+		if !m.t.Alive() {
+			break
+		}
 		m.t.Go(func() error {
 			defer wg.Done()
-			for elem := range m.in {
-				trans, err := m.MapF(elem)
-				if err != nil {
-					return err
+			for {
+				var trans interface{}
+				var err error
+				select {
+				case elem, ok := <-m.in:
+					if ok {
+						trans, err = m.MapF(elem)
+						if err != nil {
+							return err
+						}
+					} else {
+						return nil
+					}
+				case <-m.t.Dying():
+					return nil
 				}
-				m.out <- trans
 				select {
 				case m.out <- trans:
 				case <-m.t.Dying():
